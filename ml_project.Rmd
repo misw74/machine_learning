@@ -1,0 +1,128 @@
+---
+title: "Practical Machine Learning Project Assignment"
+output: html_document
+---
+
+### Abstract ###
+
+The purpose of this document is to provide all necessary information needed to reproduce building of the model for Coursera's Practical Machine Learning course Project from Johns Hopkins University.
+
+### Assignment ####
+
+This project is based on the data collected by the enthusisast who measure their body movements using accelerometers. This particular assignment is based on the data from the accelerometers on the belt, forearm, arm, and dumbell of 6 participants collected during barbell lifts.
+
+The activities are done correctly or incorrectly in 5 ways. The correctness is then stored in variable "classe".
+
+The goal of this assignment is to predict the "correctness" of the excercise based on the data from the accelerometers.
+
+More information is available on http://groupware.les.inf.puc-rio.br/har
+
+### Data ###
+
+#### Data Sources ####
+
+Data can be downloaded from 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+and
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#### Data manipulation #### 
+
+The data is first downloaded from the URL's mentioned above. Assuming the files are in the working directory we do the following to load the data into data frames
+
+```{r}
+myTrainFile <- "pml-training.csv"
+myTestFile <- "pml-testing.csv"
+
+myTrainingDataFull <- read.csv( myTrainFile, na.strings=c("NA","#DIV/0!",""))
+myTestDataFull<- read.csv( myTestFile, na.strings=c("NA","#DIV/0!",""))
+```
+
+For the cross validation purposes the training set is split again in testand train data sets.
+
+```{r}
+library(caret)
+
+set.seed(19741207)
+
+inTrain <- createDataPartition(y=myTrainingDataFull$classe, p=0.7, list=FALSE)
+myTrainingData <- myTrainingDataFull[inTrain, ];
+myTestingData <- myTrainingDataFull[-inTrain, ]
+dim(myTrainingData); 
+dim(myTestingData);
+```
+
+#### Data Cleaning ####
+
+The data consists of some variables which should not be relevant for our predictions (user_name, timestamps ), variables which include many NA's, or ones with very little variance.
+
+For this reason we define first preProcess function, which can be later used on the data set.
+
+```{r}
+preProcess <- function( aDF, aPrc ) {
+  # remove ids, usernames and timestamps
+  myRetVal <- aDF[ , 6:length(colnames(aDF)) ]
+  
+  #clean near zero variance
+  myDataNZV <- nearZeroVar(myRetVal, saveMetrics=TRUE)
+  myRetVal <- myRetVal[ ,which( !myDataNZV$nzv ) ]
+  
+  #remove columns with too many NAs
+  myNAratio <- colSums( !is.na( myRetVal ) ) / nrow( myRetVal )
+  myRetVal <- myRetVal[, which( myNAratio > aPrc )]
+  
+  myRetVal
+}
+```
+
+Using function defined above we can prepare data for fitting the model, and adjust test set accordingly to the training test changes.
+
+```{r warnings=FALSE, message=FALSE}
+
+# let's remove columns with less than 80% non NA's
+myTrain <- preProcess( myTrainingData, 0.8 )
+
+myTest <- myTestingData[, names( myTrain ) ]
+
+dim(myTrain)
+dim(myTest)
+```
+
+#### Model Fit ####
+
+The result of the prediction is a factor. Because of this decision tree algorithm seems to be the right choice.
+
+The first attempt is made with decision tree. 
+
+```{r warnings=FALSE, message=FALSE}
+library(rpart)
+
+modFitA1 <- rpart(classe ~ ., data=myTrain, method="class")
+predictionsA1 <- predict(modFitA1, myTest, type = "class")
+confusionMatrix(predictionsA1, myTest$classe)
+```
+
+The accuracy is around 73%
+
+The second attempt will be done with Random Forest
+
+```{r warnings=FALSE, message=FALSE}
+library(randomForest)
+
+modFitB1 <- randomForest(classe ~. , data=myTrain)
+predictionsB1 <- predict(modFitB1, myTest, type = "class")
+confusionMatrix(predictionsB1, myTest$classe)
+```
+
+In the case of random forest the accuracy of the model reaches 99%.
+
+### Final Answer ###
+
+The random forest model can be now used to generate answers for the project submission using the original test data set.
+
+```{r warnings=FALSE, message=FALSE}
+myResult <- predict( modFitB1, myTestDataFull, type = "class")
+```
